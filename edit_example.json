@@ -1,0 +1,92 @@
+{
+  "changes": [
+    {
+      "summary": "Add a variable and then print it in a multi-step change.",
+      "hunk": "@@ -2,3 +2,4 @@\n def process_data():\n-    print(\"Processing...\")\n+    x = 10\n+    print(f\"Processing with x = {x}\")"
+    },
+    {
+      "summary": "Added a log message to the start of the function.",
+      "hunk": "@@ -4,6 +4,7 @@\n \n def replace_in_prompt(find_string, replace_string):\n+    print(\"Starting process...\")\n     \"\"\"\n     Walks through subdirectories of the current directory and replaces a string\n     in the 'prompt' key of 'prompt.json' files."
+    },
+    {
+      "summary": "Added a log when the script starts.",
+      "hunk": "@@ -39,6 +39,7 @@\n \n if __name__ == \"__main__\":\n+    print(\"Script started.\")\n     parser = argparse.ArgumentParser(description=\"Replace a string in the 'prompt' key of 'prompt.json' files.\")\n     parser.add_argument(\"find_string\", help=\"The string to find and replace.\")\n     parser.add_argument(\"replace_string\", help=\"The string to replace the found string with.\")"
+    },
+    {
+      "summary": "Remove the unused `os` import from a Python file.",
+      "hunk": "@@ -1,5 +1,4 @@\n-import os\n import sys\n import json\n \n def main():"
+    },
+    {
+      "summary": "Change the default port from 8000 to 8080 in a Python script.",
+      "hunk": "@@ -10,7 +10,7 @@\n \n def start_server():\n     # Default port is 8000\n-    port = 8000\n+    port = 8080\n     print(f\"Starting server on port {port}\")\n     # ... server logic ...\n "
+    },
+    {
+      "summary": "Add a helper function `log_message` to a Python file.",
+      "hunk": "@@ -55,3 +55,7 @@\n     main()\n+\n+def log_message(msg):\n+    \"\"\"Logs a message to the console with a timestamp.\"\"\"\n+    print(f\"[LOG] {msg}\")"
+    },
+    {
+      "summary": "Update the version from 1.0.0 to 1.1.0 in a package.json file.",
+      "hunk": "@@ -2,6 +2,6 @@\n   \"name\": \"my-project\",\n-  \"version\": \"1.0.0\",\n+  \"version\": \"1.1.0\",\n   \"description\": \"A sample project.\",\n   \"main\": \"index.js\",\n   \"scripts\": {"
+    },
+    {
+      "summary": "Change the placeholder text for an HTML input field.",
+      "hunk": "@@ -25,5 +25,5 @@\n   <div id=\"input-container\">\n-    <input id=\"prompt-input\" placeholder=\"Enter your instruction...\">\n+    <input id=\"prompt-input\" placeholder=\"Type your message here...\">\n     <button id=\"send-button\">Send</button>\n   </div>\n </html>"
+    },
+    {
+      "summary": "Refactor file reading in Python to use a `with` statement for safety.",
+      "hunk": "@@ -20,5 +20,4 @@\n def read_config(path):\n-    f = open(path, 'r')\n-    data = json.load(f)\n-    f.close()\n-    return data\n+    with open(path, 'r') as f:\n+        data = json.load(f)\n+    return data"
+    },
+    {
+      "summary": "Move user validation logic into a new `try-except` block in Python.",
+      "hunk": "@@ -30,4 +30,7 @@\n \n def process_user(user_id):\n-    user = db.get_user(user_id)\n-    if user.is_active:\n-        print(\"Processing active user\")\n+    try:\n+        user = db.get_user(user_id)\n+        if user.is_active:\n+            print(\"Processing active user\")\n+    except UserNotFound:\n+        print(\"User not found!\")"
+    },
+    {
+      "summary": "Add a new key-value pair to a JSON configuration file.",
+      "hunk": "@@ -4,4 +4,5 @@\n   \"port\": 8080,\n   \"retries\": 3,\n-  \"timeout\": 30\n+  \"timeout\": 30,\n+  \"enable_ssl\": false\n }"
+    },
+    {
+      "summary": "Change the text content of an `h1` tag in an HTML file.",
+      "hunk": "@@ -7,5 +7,5 @@\n </head>\n <body>\n-  <h1>Welcome!</h1>\n+  <h1>Welcome to the Application!</h1>\n   <p>This is a sample page.</p>\n </body>"
+    },
+    {
+      "summary": "Add a `data-test-id` attribute to a button in an HTML file for testing.",
+      "hunk": "@@ -9,5 +9,5 @@\n   <h1>Welcome!</h1>\n   <p>This is a sample page.</p>\n-  <button>Submit</button>\n+  <button data-test-id=\"submit-button\">Submit</button>\n </body>\n </html>"
+    },
+    {
+      "summary": "Change a color value in a CSS file.",
+      "hunk": "@@ -2,5 +2,5 @@\n .header {\n-  background-color: #000;\n+  background-color: #333;\n   color: white;\n   padding: 1rem;\n }"
+    },
+    {
+      "summary": "Add a new CSS rule for `a:hover`.",
+      "hunk": "@@ -6,3 +6,7 @@\n   padding: 1rem;\n }\n+\n+a:hover {\n+  text-decoration: underline;\n+}\n"
+    },
+    {
+      "summary": "Add a new 'method' parameter with a default value to a Python function.",
+      "hunk": "@@ -15,5 +15,5 @@\n   return response\n \n-def send_request(url, data):\n+def send_request(url, data, method='POST'):\n   \"\"\"Sends an HTTP request.\"\"\"\n   # ... implementation"
+    },
+    {
+      "summary": "Add a new list item to a `<ul>` in an HTML file.",
+      "hunk": "@@ -4,5 +4,6 @@\n   <ul>\n     <li>First item</li>\n     <li>Second item</li>\n-  </ul>\n+    <li>Third item</li>\n+  </ul>\n </body>"
+    },
+    {
+      "summary": "Update the Dockerfile to use a newer version of Python.",
+      "hunk": "@@ -1,4 +1,4 @@\n-FROM python:3.9-slim\n+FROM python:3.10-slim\n \n WORKDIR /app\n COPY . /app"
+    },
+    {
+      "summary": "Add a new dependency to a `requirements.txt` file.",
+      "hunk": "@@ -2,3 +2,4 @@\n flask\n requests\n+gunicorn"
+    },
+    {
+      "summary": "Delete a block of obsolete code from a Javascript file.",
+      "hunk": "@@ -10,10 +10,4 @@\n   console.log('Component did mount');\n }\n \n-function oldAndBusted() {\n-  // This function is no longer needed.\n-  // It was used for the old API.\n-  return false;\n-}\n-\n function newHotness() {\n   // This is the new, correct function.\n   return true;"
+    },
+    {
+      "summary": "Add content to an empty file.",
+      "hunk": "@@ -0,0 +1,3 @@\n+# My Project\n+\n+This is the README for my project."
+    },
+    {
+      "summary": "Correct a typo in a YAML file.",
+      "hunk": "@@ -3,5 +3,5 @@\n   host: 'localhost'\n-  usar: 'admin'\n+  user: 'admin'\n   retries: 5\n "
+    }
+  ]
+} 

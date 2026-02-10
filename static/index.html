@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chat IDE</title>
+  <style>
+    body, html { height: 100%; margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; display: flex; font-size: 14px; background-color: #1e1e1e; color: #d4d4d4; }
+    #sidebar { width: 25%; min-width: 200px; max-width: 400px; background: #252526; border-right: 1px solid #3e3e42; display: flex; flex-direction: column; }
+    #file-tree-header { padding: 12px; font-weight: bold; border-bottom: 1px solid #3e3e42; }
+    #tree { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex-grow: 1; }
+    #tree li { padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #3e3e42; }
+    #tree li:hover { background-color: #37373d; }
+    #tree li.active { background-color: #007acc; color: #ffffff; }
+    #main { flex: 1; display: flex; flex-direction: column; height: 100vh; }
+    #chat { flex: 1; overflow: auto; padding: 16px; white-space: pre-wrap; line-height: 1.6; background: #1e1e1e; }
+    #chat .message { margin-bottom: 1em; }
+    #chat .user-msg { color: #cccccc; }
+    #chat .ai-msg { color: #d4d4d4; border-left: 3px solid #3e3e42; padding-left: 12px; position: relative; user-select: text; }
+    #chat .change-proposal { border: 1px solid #3e3e42; border-radius: 6px; margin-bottom: 12px; background: #252526; }
+    #chat .change-header { padding: 10px; display: flex; align-items: center; gap: 10px; background: #37373d; border-bottom: 1px solid #3e3e42; }
+    #chat .change-header input { width: 16px; height: 16px; }
+    #chat .change-hunk { padding: 10px; font-family: monospace; background: #1e1e1e; max-height: 300px; overflow: auto; display: none; white-space: pre-wrap; user-select: text; }
+    #chat .change-hunk .diff-del { color: #ff8a8a; background-color: #4f2323; display: block; padding: 0 5px; }
+    #chat .change-hunk .diff-add { color: #8aff8a; background-color: #234f23; display: block; padding: 0 5px; }
+    #chat .hunk-toggle { cursor: pointer; text-decoration: underline; color: #3794ff; font-size: 0.8em; margin-left: auto; }
+    #bar { display: flex; border-top: 1px solid #3e3e42; background: #252526; padding: 8px; align-items: center; }
+    #input { flex: 1; padding: 10px; border: 1px solid #37373d; border-radius: 6px; font: inherit; background-color: #3c3c3c; color: #d4d4d4; }
+    #sendBtn { padding: 10px 18px; border: none; background: #007acc; color: #fff; cursor: pointer; border-radius: 6px; margin-left: 8px; }
+    #editMode-label { margin-right: 16px; display: flex; align-items: center; gap: 6px; user-select: none; }
+    .apply-btn { padding: 10px 18px; border: none; background: #4d9d4d; color: #fff; cursor: pointer; border-radius: 6px; margin: 16px 0 0 0; }
+    .copy-btn { position: absolute; top: 5px; right: 5px; background: #3c3c3c; color: #d4d4d4; border: 1px solid #555; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.8em; opacity: 0.3; transition: opacity 0.2s; }
+    .ai-msg:hover .copy-btn { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="file-tree-header">Files</div>
+  <ul id="tree"></ul>
+</div>
+
+<div id="main">
+  <div id="chat"><p>Select a file to begin...</p></div>
+  <div id="bar">
+    <label id="editMode-label">
+      <input type="checkbox" id="editMode" checked> Edit Mode
+    </label>
+    <input id="input" placeholder="Type instruction (e.g., 'add logging') or ask a question">
+    <button id="sendBtn">Send</button>
+  </div>
+</div>
+
+<script>
+let currentFile = '';
+let currentText = '';
+
+const $ = id => document.getElementById(id);
+
+// --- Utility Functions ---
+function stripThinking(text) {
+    // Removes <thinking>...</thinking> or <think>...</think> blocks for clean display.
+    // [\s\S] matches any character including newlines.
+    return text.replace(/<think(ing)?>[\s\S]*?<\/think(ing)?>/g, '').trim();
+}
+
+function escapeHtml(unsafe) {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+// --- UI Rendering ---
+function renderMessage(content, className, isHtml = false) {
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${className}`;
+    if (isHtml) {
+        msgDiv.innerHTML = content;
+    } else {
+        msgDiv.textContent = content;
+    }
+    $('chat').appendChild(msgDiv);
+    $('chat').scrollTop = $('chat').scrollHeight;
+    return msgDiv; // Return the element for streaming updates
+}
+
+function renderChangeProposals(rawAiResponse) {
+  $('chat').innerHTML = ''; // Clear previous content
+
+  const edits = [];
+  // Use a regex to parse all search/replace blocks from the AI response
+  const editBlockRegex = /<<<<<<< SEARCH\n([\s\S]*?)=======\n([\s\S]*?)>>>>>>> REPLACE/g;
+  let match;
+  while ((match = editBlockRegex.exec(rawAiResponse)) !== null) {
+      // The captured groups are [1] for search and [2] for replace.
+      // We also trim trailing newline from the search block that the model might add.
+      edits.push({
+          search: match[1].replace(/\n$/, ''),
+          replace: match[2].replace(/\n$/, '')
+      });
+  }
+
+  if (edits.length === 0) {
+    const cleanedResponse = stripThinking(rawAiResponse).trim();
+    if (cleanedResponse) {
+        // AI responded, but we couldn't parse it. Show the raw response.
+        const errorHtml = `
+            <div>❌ <strong>Parsing Error</strong></div>
+            <p>The AI responded, but its output could not be parsed into edit blocks. This might be due to a formatting error. You can see the raw response below.</p>
+            <pre style="background:#252526;padding:8px;border-radius:4px;margin-top:8px; white-space: pre-wrap;">${escapeHtml(cleanedResponse)}</pre>
+        `;
+        const msgContainer = renderMessage(errorHtml, "ai-msg", true);
+        
+        // Add a copy button for the raw response
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'Copy Raw';
+        copyBtn.className = 'copy-btn';
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(cleanedResponse)
+                .then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => { copyBtn.textContent = 'Copy Raw'; }, 2000); });
+        };
+        msgContainer.appendChild(copyBtn);
+    } else {
+        // AI genuinely proposed no changes.
+        renderMessage("AI proposed no changes.", "ai-msg");
+    }
+    return;
+  }
+
+  edits.forEach((edit, index) => {
+    const proposalDiv = document.createElement('div');
+    proposalDiv.className = 'change-proposal';
+    // Store the raw blocks in dataset attributes for later use
+    proposalDiv.dataset.search = edit.search;
+    proposalDiv.dataset.replace = edit.replace;
+
+    const header = document.createElement('div');
+    header.className = 'change-header';
+    header.innerHTML = `
+      <input type="checkbox" id="change-${index}" checked>
+      <label for="change-${index}">Change #${index + 1}</label>
+      <a class="hunk-toggle">show edit</a>
+    `;
+
+    const hunkPre = document.createElement('pre');
+    hunkPre.className = 'change-hunk';
+
+    // Display a diff-like view for clarity
+    hunkPre.innerHTML = `
+      <span class="diff-del">- REMOVE</span><div style="padding-left: 10px;">${escapeHtml(edit.search)}</div>
+      <span class="diff-add">+ ADD</span><div style="padding-left: 10px;">${escapeHtml(edit.replace)}</div>
+    `;
+
+    proposalDiv.appendChild(header);
+    proposalDiv.appendChild(hunkPre);
+    $('chat').appendChild(proposalDiv);
+  });
+
+  const applyBtn = document.createElement('button');
+  applyBtn.textContent = 'Apply Selected Changes';
+  applyBtn.className = 'apply-btn';
+  applyBtn.onclick = applySelectedChanges;
+  $('chat').appendChild(applyBtn);
+
+  document.querySelectorAll('.hunk-toggle').forEach(toggle => {
+    toggle.onclick = (e) => {
+      const hunkElement = e.target.closest('.change-proposal').querySelector('.change-hunk');
+      const isVisible = hunkElement.style.display === 'block';
+      hunkElement.style.display = isVisible ? 'none' : 'block';
+      e.target.textContent = isVisible ? 'hide edit' : 'show edit';
+    };
+  });
+}
+
+// --- Main Application Logic ---
+async function loadTree() {
+  try {
+    const files = await fetch('/tree').then(r => r.json());
+    $('tree').innerHTML = '';
+    files.forEach(f => {
+      const li = document.createElement('li');
+      li.textContent = f;
+      li.onclick = () => openFile(f);
+      $('tree').appendChild(li);
+    });
+  } catch (error) {
+    alert(`Error loading file tree: ${error.message}`);
+  }
+}
+
+async function openFile(name) {
+  try {
+    currentFile = name;
+    currentText = await fetch('/read_file?name=' + encodeURIComponent(name)).then(r => r.text());
+    
+    document.querySelectorAll('#tree li').forEach(li => li.classList.toggle('active', li.textContent === name));
+
+    $('chat').innerHTML = `<div class="message"><strong>File: ${name}</strong><br><pre style="background:#252526;padding:8px;border-radius:4px;margin-top:8px;">${currentText.slice(0, 1000)}${currentText.length > 1000 ? '...' : ''}</pre></div>`;
+    $('input').focus();
+  } catch (error) {
+    alert(`Error opening file: ${error.message}`);
+  }
+}
+
+async function send() {
+  const prompt = $('input').value.trim();
+  if (!prompt || !currentFile) return;
+
+  $('input').value = '';
+  const isEditMode = $('editMode').checked;
+  renderMessage(`🡇 You (${isEditMode ? 'edit' : 'chat'}): ${prompt}`, 'user-msg');
+  $('sendBtn').disabled = true;
+
+  try {
+    const response = await fetch('/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ prompt, fileName: currentFile, fileText: currentText, edit: isEditMode })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: "Server returned a non-JSON error." }));
+      throw new Error(errorData.error || 'Unknown server error', { cause: errorData });
+    }
+
+    // --- CORRECTED STREAMING LOGIC ---
+    const aiMsgContainer = renderMessage('', 'ai-msg');
+    aiMsgContainer.innerHTML = '<div>🡅 AI: Thinking...</div>';
+    const aiMsgContent = aiMsgContainer.firstChild;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullResponse = '';
+    
+    while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        fullResponse += decoder.decode(value, { stream: true });
+        const cleanedText = stripThinking(fullResponse);
+        aiMsgContent.textContent = `🡅 AI:\n${cleanedText}`;
+        $('chat').scrollTop = $('chat').scrollHeight;
+    }
+
+    // --- UPDATED POST-STREAM PROCESSING ---
+    if (isEditMode) {
+        // We now pass the entire raw response to be parsed for edit blocks
+        renderChangeProposals(fullResponse);
+    } else {
+        // For chat mode, add a copy button to the completed message
+        const copyBtn = document.createElement('button');
+        copyBtn.textContent = 'Copy';
+        copyBtn.className = 'copy-btn';
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(stripThinking(fullResponse))
+                .then(() => { copyBtn.textContent = 'Copied!'; setTimeout(() => { copyBtn.textContent = 'Copy'; }, 2000); });
+        };
+        aiMsgContainer.appendChild(copyBtn);
+    }
+
+  } catch (error) {
+    console.error("Error in send():", error);
+    const details = error.cause ? `\nDetails: ${error.cause.details}` : '';
+    renderMessage(`❌ Network or Client Error: ${error.message}${details}`, 'ai-msg');
+  } finally {
+    $('sendBtn').disabled = false;
+  }
+}
+
+async function applySelectedChanges() {
+  const selectedEdits = Array.from(document.querySelectorAll('.change-proposal'))
+    .filter(p => p.querySelector('input[type="checkbox"]:checked'))
+    .map(p => ({
+        search: p.dataset.search,
+        replace: p.dataset.replace
+    }));
+
+  if (selectedEdits.length === 0) {
+    alert('No changes selected to apply.');
+    return;
+  }
+
+  try {
+    const response = await fetch('/apply_edits', { // Use the new endpoint
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ fileName: currentFile, oldText: currentText, edits: selectedEdits })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        let errorMsg = errorData.error || 'Failed to apply changes.';
+        if (errorData.failed_edit_index !== undefined) {
+          errorMsg += `\n\nChange #${errorData.failed_edit_index + 1} could not be applied. Subsequent changes were aborted.`
+        }
+        throw new Error(errorMsg);
+    }
+
+    alert('Changes applied successfully!');
+    await openFile(currentFile);
+  } catch (error) {
+    alert(`Error applying changes:\n\n${error.message}`);
+  }
+}
+
+// --- Event Listeners ---
+window.onload = () => {
+  loadTree();
+  $('sendBtn').onclick = send;
+  $('input').addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
+  });
+};
+</script>
+</body>
+</html>
